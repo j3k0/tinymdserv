@@ -349,10 +349,21 @@ function mp4_handler(req, res) {
     }
 }
 
+function getMarkdownTitle(filePath) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const titleMatch = content.match(/^# (.*?)(?:\r?\n|$)/);
+        return titleMatch ? titleMatch[1].trim() : null;
+    } catch (error) {
+        return null;
+    }
+}
+
 function default_handler(req, res) {
     const req_url = decodeURIComponent(req.url);
     const postfix = [".md", "index.md", "/index.md"]
 
+    // First try to find markdown files
     for (let i = 0; i < postfix.length; i++) {
         try {
             fs.accessSync(docs_path + req_url + postfix[i], fs.constants.F_OK);
@@ -360,6 +371,70 @@ function default_handler(req, res) {
             return;
         } catch (error) {
         }
+    }
+
+    // If no markdown file found, check if it's a directory
+    try {
+        const fullPath = docs_path + req_url;
+        const stats = fs.statSync(fullPath);
+        
+        if (stats.isDirectory()) {
+            const files = fs.readdirSync(fullPath);
+            const items = files.map(file => {
+                const filePath = path.join(fullPath, file);
+                const isDir = fs.statSync(filePath).isDirectory();
+                const relativePath = path.join(req_url, file).replace(/\\/g, '/');
+                let title = null;
+                
+                // Get title from markdown files
+                if (!isDir && file.toLowerCase().endsWith('.md')) {
+                    title = getMarkdownTitle(filePath);
+                }
+
+                return {
+                    name: file,
+                    isDirectory: isDir,
+                    path: relativePath,
+                    title: title
+                };
+            });
+
+            // Sort items: directories first, then files
+            items.sort((a, b) => {
+                if (a.isDirectory === b.isDirectory) {
+                    return a.name.localeCompare(b.name);
+                }
+                return a.isDirectory ? -1 : 1;
+            });
+
+            // Generate directory listing content
+            let content = `# Directory listing for ${req_url || '/'}\n\n`;
+            if (req_url !== '/') {
+                content += `- [../ Parent Directory](../)\n`;
+            }
+            
+            items.forEach(item => {
+                const displayName = item.name + (item.isDirectory ? '/' : '');
+                if (item.title) {
+                    // If we have a markdown title, show it in parentheses after the filename
+                    content += `- [${item.title}](/${encodeURIComponent(item.path)}) _(${displayName})_\n`;
+                } else {
+                    content += `- [${displayName}](/${encodeURIComponent(item.path)}${item.isDirectory ? '/' : ''})\n`;
+                }
+            });
+
+            // Use the existing markdown renderer to display the content
+            content = marked(content, { "mangle": false, headerIds: false });
+            res.render('template.ejs', {
+                "title": `Directory: ${req_url || '/'}`,
+                "content": content,
+                "page": null,
+                "params": {}
+            });
+            return;
+        }
+    } catch (error) {
+        // If there's an error reading the directory, continue to 404
     }
 
     res.status(404).send('404 Not Found!');
