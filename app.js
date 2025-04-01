@@ -9,6 +9,8 @@ import { marked } from 'marked';
 import * as fs from 'node:fs';
 import yargs from 'yargs';
 import { createRequire } from 'module';
+import crypto from 'crypto';
+import cookieParser from 'cookie-parser';
 const require = createRequire(import.meta.url);
 const { version } = require('./package.json');
 
@@ -18,6 +20,38 @@ const { version } = require('./package.json');
 
 let docs_path;
 let quiet = false;
+const AUTH_COOKIE_NAME = 'auth_token';
+const AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Authentication settings
+const USERNAME = process.env.AUTH_USERNAME || 'admin';
+const PASSWORD = process.env.AUTH_PASSWORD || 'password';
+const SALT = process.env.AUTH_SALT || 'default_salt';
+
+// Generate auth token
+function generateAuthToken(username, password) {
+    return crypto
+        .createHash('sha256')
+        .update(`${username}:${password}:${SALT}`)
+        .digest('hex');
+}
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+    // Skip auth for login page and its assets
+    if (req.path === '/login' || req.path.startsWith('/login/')) {
+        return next();
+    }
+
+    const authToken = req.cookies[AUTH_COOKIE_NAME];
+    const expectedToken = generateAuthToken(USERNAME, PASSWORD);
+
+    if (authToken === expectedToken) {
+        next();
+    } else {
+        res.redirect('/login');
+    }
+}
 
 ///////////////////
 // Main function //
@@ -71,6 +105,12 @@ function main() {
 
     const app = express();
 
+    // Add cookie parser middleware
+    app.use(cookieParser());
+    
+    // Add body parser for login form
+    app.use(express.urlencoded({ extended: true }));
+
     // Set docs path and quiet mode.
     docs_path = path.resolve(argv.dir);
     quiet = argv.quiet;
@@ -84,6 +124,36 @@ function main() {
 
     app.set('views', path.resolve(argv.templates));
     app.set('view engine', 'ejs');
+
+    // Login routes (before auth middleware)
+    app.get('/login', (req, res) => {
+        res.render('login.ejs', { error: null });
+    });
+
+    app.post('/login', (req, res) => {
+        const { username, password } = req.body;
+        
+        if (username === USERNAME && password === PASSWORD) {
+            const token = generateAuthToken(username, password);
+            res.cookie(AUTH_COOKIE_NAME, token, {
+                maxAge: AUTH_COOKIE_MAX_AGE,
+                httpOnly: true,
+                secure: use_https
+            });
+            res.redirect('/');
+        } else {
+            res.render('login.ejs', { error: 'Invalid credentials' });
+        }
+    });
+
+    // Add logout handler
+    app.post('/logout', (req, res) => {
+        res.clearCookie(AUTH_COOKIE_NAME);
+        res.redirect('/login');
+    });
+
+    // Add auth middleware for all other routes
+    app.use(requireAuth);
 
     app.get('/', (req, res) => {
         res.redirect(`/search`);

@@ -25,6 +25,7 @@
     "url": "https://github.com/doosik71/tinymdserv.git"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "ejs": "^3.1.10",
     "express": "^4.21.2",
     "marked": "^15.0.7",

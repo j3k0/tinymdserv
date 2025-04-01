@@ -21,6 +21,11 @@ EXPOSE 80 443
 ENV DOCS_DIR=/app/docs
 ENV TEMPLATES_DIR=/app/templates
 
+# Set default authentication credentials (SHOULD BE OVERRIDDEN IN PRODUCTION)
+ENV AUTH_USERNAME=admin
+ENV AUTH_PASSWORD=password
+ENV AUTH_SALT=change_this_salt_in_production
+
 # Create a volume for the docs directory
 VOLUME [ "/app/docs", "/app/templates" ]
 

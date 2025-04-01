@@ -34,6 +34,18 @@
     </style>
 </head>
 <body>
+    <div style="position: absolute; top: 1rem; right: 1rem;">
+        <form action="/logout" method="POST" style="margin: 0;">
+            <button type="submit" style="
+                padding: 0.5rem 1rem;
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 0.875rem;
+            ">Logout</button>
+        </form>
+    </div>
     <%- content %>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
