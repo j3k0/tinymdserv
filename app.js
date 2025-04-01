@@ -50,6 +50,12 @@ function main() {
             description: 'Set document default name',
             default: 'index.md',
         })
+        .option('templates', {
+            alias: 't',
+            type: 'string',
+            description: 'Set templates directory path',
+            default: './templates',
+        })
         .option('quiet', {
             alias: 'q',
             type: 'boolean',
@@ -76,12 +82,15 @@ function main() {
         console.log('Default name:', argv.file);
     }
 
-    app.set('views', docs_path);
+    app.set('views', path.resolve(argv.templates));
     app.set('view engine', 'ejs');
 
     app.get('/', (req, res) => {
-        res.redirect(`/${argv.file}`);
+        res.redirect(`/search`);
     });
+
+    // Add static middleware for templates directory before other routes
+    app.use(express.static(path.resolve(argv.templates)));
 
     app.get('*.md', doc_handler);
 
@@ -278,25 +287,55 @@ function search_files(directory, query) {
     const search_string = query.toLowerCase()
 
     function search(directory) {
-        const files = fs.readdirSync(directory);
+        try {
+            const files = fs.readdirSync(directory);
 
-        for (const file of files) {
-            const file_path = path.join(directory, file);
+            for (const file of files) {
+                const file_path = path.join(directory, file);
 
-            if (fs.statSync(file_path).isDirectory()) {
-                search(file_path);
-            } else {
-                const extension = path.extname(file_path).toLowerCase();
+                try {
+                    // Get file stats (using lstat to detect symlinks)
+                    const stats = fs.lstatSync(file_path);
 
-                if (extension !== '.md' && extension !== '.html')
+                    // Skip symlinks
+                    if (stats.isSymbolicLink()) {
+                        continue;
+                    }
+
+                    // Skip node_modules directories
+                    if (stats.isDirectory()) {
+                        if (file === 'node_modules') {
+                            continue;
+                        }
+                        search(file_path);
+                    } else {
+                        const extension = path.extname(file_path).toLowerCase();
+
+                        if (extension !== '.md' && extension !== '.html') {
+                            continue;
+                        }
+
+                        const content = fs.readFileSync(file_path, 'utf8').toLowerCase();
+                        if (!content.includes(search_string)) {
+                            continue;
+                        }
+
+                        files_matching.push(file_path.substring(prefix_length).replace(/\\/g, '/'));
+                    }
+                } catch (error) {
+                    // Skip files/directories we can't access
+                    if (!quiet) {
+                        console.log(`Warning: Could not access ${file_path}: ${error.message}`);
+                    }
                     continue;
-
-                const content = fs.readFileSync(file_path, 'utf8').toLowerCase();
-                if (!content.includes(search_string))
-                    continue;
-
-                files_matching.push(file_path.substring(prefix_length).replace(/\\/g, '/'));
+                }
             }
+        } catch (error) {
+            // Skip directories we can't read
+            if (!quiet) {
+                console.log(`Warning: Could not read directory ${directory}: ${error.message}`);
+            }
+            return;
         }
     }
 

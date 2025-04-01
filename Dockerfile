@@ -10,19 +10,21 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY app.js app.js
+# Copy source code and templates
+COPY app.js ./
+COPY templates ./templates
 
 # Expose the default ports (80 for HTTP, 443 for HTTPS)
-EXPOSE 80
+EXPOSE 80 443
 
-# Set default document directory
-ENV DOCS_DIR=/docs
+# Set default directories
+ENV DOCS_DIR=/app/docs
+ENV TEMPLATES_DIR=/app/templates
 
 # Create a volume for the docs directory
-VOLUME [ "/docs" ]
+VOLUME [ "/app/docs", "/app/templates" ]
 
 # Start the server
 # Users can override these defaults using docker run command arguments
 ENTRYPOINT ["node", "app.js"]
-CMD ["--dir", "/docs", "--port", "80"] 
+CMD ["--port", "80"] 
